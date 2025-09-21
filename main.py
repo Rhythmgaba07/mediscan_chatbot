@@ -38,7 +38,7 @@ def chat_endpoint(request: ChatRequest):
     }
 
     payload = {
-        "model": "llama3-8b-8192",
+        "model": "gemma-7b-it",
         "messages": [
             {"role": "system", "content": "You are a helpful medical assistant."},
             {"role": "user", "content": request.question}
