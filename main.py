@@ -1,13 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import requests, os
+import requests
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = FastAPI()
 
+# CORS for Android app
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,21 +20,18 @@ app.add_middleware(
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
-class ChatRequest(BaseModel):
-    question: str
-
 @app.post("/chat/")
-def chat(req: ChatRequest):
+def chat(question: str = Form(...)):
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
 
     payload = {
-        "model": "llama3-8b-8192",
+        "model": "llama3-8b-8192",  # Or "mixtral-8x7b-32768" or "gemma-7b-it"
         "messages": [
             {"role": "system", "content": "You are a helpful medical assistant."},
-            {"role": "user", "content": req.question}
+            {"role": "user", "content": question}
         ],
         "temperature": 0.7
     }
@@ -45,3 +43,4 @@ def chat(req: ChatRequest):
         return {"answer": answer.strip()}
     except Exception as e:
         return {"error": str(e)}
+
