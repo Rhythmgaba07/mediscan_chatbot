@@ -1,65 +1,83 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import requests
 import os
 from dotenv import load_dotenv
+import google.generativeai as genai
+import uvicorn
 import logging
 
+# ----------------------------
+# Load environment variables
+# ----------------------------
 load_dotenv()
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+# ----------------------------
+# App initialization
+# ----------------------------
 app = FastAPI()
-
-# Logging
 logging.basicConfig(level=logging.INFO)
 
-# CORS for Android app
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Adjust as needed
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+# Initialize model
+model = genai.GenerativeModel("gemini-1.5-flash")
 
+# ----------------------------
+# Pydantic request model
+# ----------------------------
 class ChatRequest(BaseModel):
     question: str
 
-@app.post("/chat/")
-def chat_endpoint(request: ChatRequest):
-    logging.info(f"Received question: {request.question}")
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": "gemma-7b-it",
-        "messages": [
-            {"role": "system", "content": "You are a helpful medical assistant."},
-            {"role": "user", "content": request.question}
-        ],
-        "temperature": 0.7
-    }
-
+# ----------------------------
+# Helper function
+# ----------------------------
+def get_chat_response(question: str) -> str:
+    """
+    Calls the Generative AI model and returns response text.
+    """
     try:
-        response = requests.post(GROQ_ENDPOINT, headers=headers, json=payload)
-        response.raise_for_status()  # Raise error if HTTP error
-        data = response.json()
-        logging.info(f"GROQ response: {data}")
+        response = model.generate_content([question])
+        return response.text
+    except Exception as e:
+        logging.error(f"Error generating response: {e}")
+        return f"Error: {str(e)}"
 
-        # Handle empty choices
-        if "choices" in data and len(data["choices"]) > 0:
-            answer = data["choices"][0]["message"]["content"]
-            return {"answer": answer.strip()}
-        else:
-            return {"error": "No response from model."}
+# ----------------------------
+# Chat endpoint
+# ----------------------------
+@app.post("/chat/")
+async def chat_endpoint(request: ChatRequest):
+    try:
+        logging.info(f"Received question: {request.question}")
+
+        # Generate response
+        answer = get_chat_response(
+            f"You are a helpful medical assistant. Answer this question clearly: {request.question}"
+        )
+
+        logging.info(f"Answer: {answer}")
+
+        return JSONResponse(content={"answer": answer})
 
     except Exception as e:
-        logging.error(f"Error calling GROQ API: {e}")
-        return {"error": str(e)}
+        logging.error(f"Error in /chat/: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# ----------------------------
+# Run server
+# ----------------------------
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
 
